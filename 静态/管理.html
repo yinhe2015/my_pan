@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理 - 云盘</title>
+    <link rel="stylesheet" href="/static/inter/inter.css">
+    <style>
+        :root {
+            --bg-primary: #0f0f1a;
+            --bg-secondary: #1a1a2e;
+            --bg-tertiary: #252542;
+            --accent-primary: #6366f1;
+            --accent-secondary: #818cf8;
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --shadow-lg: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.6;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-color);
+            padding: 48px 40px 40px;
+            width: 480px;
+            max-width: 90vw;
+            box-shadow: var(--shadow-lg);
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 8px;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 32px;
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .action-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+        }
+
+        .action-item:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .action-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .action-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .action-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--accent-gradient);
+            color: white;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
+        }
+
+        .btn-danger:active {
+            transform: translateY(0);
+        }
+
+        .btn-danger:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .msg {
+            text-align: center;
+            font-size: 13px;
+            margin-top: 16px;
+            min-height: 20px;
+            padding: 8px;
+            border-radius: var(--radius-sm);
+        }
+
+        .msg.success {
+            color: #86efac;
+            background: rgba(134, 239, 172, 0.1);
+        }
+
+        .msg.error {
+            color: #fca5a5;
+            background: rgba(252, 165, 165, 0.1);
+        }
+
+        .msg.info {
+            color: #93c5fd;
+            background: rgba(147, 197, 253, 0.1);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 480px) {
+            .card {
+                padding: 32px 24px 28px;
+            }
+
+            .action-item {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+
+            .action-item .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo">⚙️ 管理</div>
+        <p class="subtitle">服务器管理面板</p>
+
+        <div class="actions">
+            <div class="action-item">
+                <div class="action-info">
+                    <span class="action-title">停止服务器</span>
+                    <span class="action-desc">关闭当前运行的服务器</span>
+                </div>
+                <button class="btn btn-danger" id="stopBtn">停止</button>
+            </div>
+
+            <div class="action-item">
+                <div class="action-info">
+                    <span class="action-title">重启服务器</span>
+                    <span class="action-desc">重新启动服务器以应用更改</span>
+                </div>
+                <button class="btn btn-primary" id="restartBtn">重启</button>
+            </div>
+        </div>
+
+        <div class="msg" id="msg"></div>
+    </div>
+
+    <script>
+        const msgEl = document.getElementById('msg');
+        const stopBtn = document.getElementById('stopBtn');
+        const restartBtn = document.getElementById('restartBtn');
+
+        function setMsg(text, type) {
+            msgEl.textContent = text;
+            msgEl.className = 'msg ' + type;
+        }
+
+        async function handleAction(url, btn) {
+            btn.disabled = true;
+            setMsg('处理中...', 'info');
+
+            try {
+                const response = await fetch(url, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    setMsg(data.message || '操作成功', 'success');
+                } else {
+                    setMsg(data.message || '操作失败', 'error');
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                setMsg('网络错误，请重试', 'error');
+                btn.disabled = false;
+            }
+        }
+
+        stopBtn.addEventListener('click', function() {
+            if (confirm('确定要停止服务器吗？')) {
+                handleAction('/manage/stop', stopBtn);
+            }
+        });
+
+        restartBtn.addEventListener('click', function() {
+            if (confirm('确定要重启服务器吗？')) {
+                handleAction('/manage/restart', restartBtn);
+            }
+        });
+    </script>
+</body>
+</html>

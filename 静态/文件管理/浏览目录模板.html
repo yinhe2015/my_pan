@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云盘</title>
+    <link rel="stylesheet" href="/static/文件管理/浏览目录_样式.css">
+    <link rel="stylesheet" href="/static/inter/inter.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header" id="header">
+            <h1 class="logo">☁️ 云盘</h1>
+            <div class="actions">
+                <button id="newFolderBtn" class="btn btn-secondary">
+                    <span class="icon">📁</span> 新建文件夹
+                </button>
+                <label class="btn btn-primary upload-btn">
+                    <span class="icon">📄</span> 上传文件
+                    <input type="file" id="fileInput" multiple hidden>
+                </label>
+                <label class="btn btn-primary upload-btn">
+                    <span class="icon">📂</span> 上传目录
+                    <input type="file" id="folderInput" multiple directory webkitdirectory mozdirectory hidden>
+                </label>
+            </div>
+        </header>
+
+        <nav class="breadcrumb" id="breadcrumb">
+            <a href="#" data-path="" class="breadcrumb-item">根目录</a>
+        </nav>
+
+        <div class="file-list" id="fileList">
+            <div class="loading">加载中...</div>
+        </div>
+
+        <!-- 重构上传进度面板 -->
+        <div class="upload-progress" id="uploadProgress" hidden>
+            <div class="upload-progress-header">
+                <h4>上传进度</h4>
+                <button class="upload-close-btn" id="uploadCloseBtn" title="最小化">×</button>
+            </div>
+            <div class="overall-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="overallProgressFill"></div>
+                </div>
+                <span class="progress-text" id="overallProgressText">准备上传...</span>
+            </div>
+            
+            <div class="files-progress-list" id="filesProgressList"></div>
+            
+            <div class="upload-stats" id="uploadStats">
+                <span id="uploadCount">0/0 文件</span>
+                <span id="uploadSpeed">0 KB/s</span>
+            </div>
+        </div>
+
+        <!-- 小型圆形进度指示器 -->
+        <div class="mini-progress-indicator" id="miniProgressIndicator" hidden>
+            <svg class="mini-progress-ring" viewBox="0 0 56 56">
+                <defs>
+                    <linearGradient id="miniGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#6366f1"/>
+                        <stop offset="100%" style="stop-color:#a855f7"/>
+                    </linearGradient>
+                </defs>
+                <circle class="bg" cx="28" cy="28" r="24"/>
+                <circle class="progress" id="miniProgressRing" cx="28" cy="28" r="24" 
+                    stroke-dasharray="150.8" stroke-dashoffset="150.8"/>
+            </svg>
+            <span class="mini-progress-text" id="miniProgressText">0%</span>
+            <span class="mini-progress-speed" id="miniProgressSpeed">0 KB/s</span>
+        </div>
+    </div>
+
+    <!-- 新建文件夹弹窗 -->
+    <div class="modal" id="newFolderModal" hidden>
+        <div class="modal-content">
+            <h3>新建文件夹</h3>
+            <input type="text" id="folderNameInput" placeholder="文件夹名称" class="input">
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="cancelFolderBtn">取消</button>
+                <button class="btn btn-primary" id="confirmFolderBtn">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 当前路径
+        let currentPath = '占位符_由后端动态替换';
+        const key = new URLSearchParams(window.location.search).get('key') || '';
+
+        function addKey(url) {
+            if (!key) return url;
+            const sep = url.includes('?') ? '&' : '?';
+            return url + sep + 'key=' + encodeURIComponent(key);
+        }
+
+        const iconMap = [
+            // 常见
+            { ext: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'], icon: '🖼️' },
+            { ext: ['mp4', 'mkv', 'avi', 'flv', 'wmv', 'webm', 'mov', 'mpg'], icon: '🎬' },
+            { ext: ['mp3', 'wav', 'flac', 'aac', 'ogg'], icon: '🎵' },
+            { ext: ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'], icon: '📦' },
+
+            // 文档
+            { ext: ['doc', 'docx'], icon: '📘' },
+            { ext: ['xls', 'xlsx'], icon: '📗' },
+            { ext: ['ppt', 'pptx'], icon: '📙' },
+
+            { ext: ['pdf'], icon: '📕' },
+            { ext: ['txt'], icon: '📄' },
+            { ext: ['md'], icon: '📝' },
+
+            // 代码
+            { ext: ['html'], icon: 'H' },
+            { ext: ['js'], icon: '💛' },
+            { ext: ['ts'], icon: '💙' },
+            { ext: ['py'], icon: '🐍' },
+            { ext: ['java'], icon: '☕' },
+            { ext: ['c', 'h', 'cpp', 'hpp'], icon: 'C' }
+        ];
+        const defaultIcon = '📄';
+
+        // DOM 元素
+        const fileList = document.getElementById('fileList');
+        const breadcrumb = document.getElementById('breadcrumb');
+        const header = document.getElementById('header');
+        const fileInput = document.getElementById('fileInput');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const overallProgressFill = document.getElementById('overallProgressFill');
+        const overallProgressText = document.getElementById('overallProgressText');
+        const filesProgressList = document.getElementById('filesProgressList');
+        const uploadCount = document.getElementById('uploadCount');
+        const uploadSpeed = document.getElementById('uploadSpeed');
+        const uploadCloseBtn = document.getElementById('uploadCloseBtn');
+        const miniProgressIndicator = document.getElementById('miniProgressIndicator');
+        const miniProgressRing = document.getElementById('miniProgressRing');
+        const miniProgressText = document.getElementById('miniProgressText');
+        const miniProgressSpeed = document.getElementById('miniProgressSpeed');
+        const newFolderBtn = document.getElementById('newFolderBtn');
+        const newFolderModal = document.getElementById('newFolderModal');
+        const folderNameInput = document.getElementById('folderNameInput');
+        const cancelFolderBtn = document.getElementById('cancelFolderBtn');
+        const confirmFolderBtn = document.getElementById('confirmFolderBtn');
+
+        // 上传相关状态
+        let uploadQueue = []; // 上传队列
+        let totalFiles = 0;   // 总文件数
+        let completedFiles = 0; // 已完成文件数
+        let totalSize = 0;    // 总大小
+        let uploadedSize = 0; // 已上传大小
+        let uploadXhrs = {};  // 存储所有上传的XHR对象
+        let speedMonitor = null; // 速度监控定时器
+        let lastUploadedSize = 0; // 上一次的上传大小
+        let lastSpeedSampleTime = 0; // 上一次测速时间
+        let isUploadMinimized = false; // 上传面板是否最小化
+        let fileSpeeds = {}; // 每个文件的上传速度记录
+        let activeUploads = 0; // 当前活跃上传数
+        const UPLOAD_CONCURRENCY = 3; // 并发上传数
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFiles();
+            setupEventListeners();
+        });
+
+        // 设置事件监听
+        function setupEventListeners() {
+            // 文件上传
+            fileInput.addEventListener('change', handleFileSelection);
+            
+            // 目录上传
+            const folderInput = document.getElementById('folderInput');
+            folderInput.addEventListener('change', handleFileSelection);
+
+            // 新建文件夹
+            newFolderBtn.addEventListener('click', () => {
+                newFolderModal.hidden = false;
+                folderNameInput.focus();
+            });
+
+            cancelFolderBtn.addEventListener('click', () => {
+                newFolderModal.hidden = true;
+                folderNameInput.value = '';
+            });
+
+            confirmFolderBtn.addEventListener('click', createFolder);
+
+            folderNameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') createFolder();
+                if (e.key === 'Escape') {
+                    newFolderModal.hidden = true;
+                    folderNameInput.value = '';
+                }
+            });
+
+            // 点击模态框背景关闭
+            newFolderModal.addEventListener('click', (e) => {
+                if (e.target === newFolderModal) {
+                    newFolderModal.hidden = true;
+                    folderNameInput.value = '';
+                }
+            });
+
+            // 上传面板关闭按钮（最小化）
+            uploadCloseBtn.addEventListener('click', minimizeUploadPanel);
+
+            // 迷你进度指示器点击（恢复面板）
+            miniProgressIndicator.addEventListener('click', restoreUploadPanel);
+
+            // 点击页面空白处关闭文件操作菜单
+            document.addEventListener('click', closeAllFileMenus);
+
+            // 初始化重命名和移动模态框
+            initRenameMoveModals();
+
+            // 初始化目录选择器
+            initDirectorySelector();
+
+            // 设置头部拖拽上传
+            setupHeaderDragDrop();
+        }
+
+        // 最小化上传面板
+        function minimizeUploadPanel() {
+            isUploadMinimized = true;
+            uploadProgress.hidden = true;
+            miniProgressIndicator.hidden = false;
+        }
+
+        // 恢复上传面板
+        function restoreUploadPanel() {
+            isUploadMinimized = false;
+            miniProgressIndicator.hidden = true;
+            uploadProgress.hidden = false;
+        }
+
+        // 设置头部拖拽上传 (header + breadcrumb)
+        function setupHeaderDragDrop() {
+            const dragTargets = [header, breadcrumb];
+            
+            // 拖拽事件
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dragTargets.forEach(target => {
+                    target.addEventListener(eventName, preventDefaults, false);
+                });
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            // 拖拽进入/悬停
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dragTargets.forEach(target => {
+                    target.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dragTargets.forEach(t => t.classList.add('dragover'));
+                    }, false);
+                });
+            });
+
+            // 拖拽离开/放下
+            ['dragleave', 'drop'].forEach(eventName => {
+                dragTargets.forEach(target => {
+                    target.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // 延迟移除，避免快速拖拽时闪烁
+                        setTimeout(() => {
+                            if (!isDraggingOverAnyTarget(dragTargets)) {
+                                dragTargets.forEach(t => t.classList.remove('dragover'));
+                            }
+                        }, 100);
+                    }, false);
+                });
+            });
+
+            // 处理文件放下
+            dragTargets.forEach(target => {
+                target.addEventListener('drop', handleDrop, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            function isDraggingOverAnyTarget(targets) {
+                return targets.some(target => target.classList.contains('dragover'));
+            }
+
+            async function handleDrop(e) {
+                // 移除拖拽样式
+                dragTargets.forEach(target => target.classList.remove('dragover'));
+                
+                const dt = e.dataTransfer;
+                const { files, directories } = await collectDroppedUploadItems(dt);
+                if (files.length > 0 || directories.length > 0) {
+                    processFilesForUpload(files, directories);
+                }
+            }
+        }
+
+        // 处理文件选择
+        function handleFileSelection(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                processFilesForUpload(files);
+            }
+            // 重置input值，允许再次选择相同文件
+            e.target.value = '';
+        }
+
+        // 收集拖拽文件，支持目录递归和多文件混合拖拽
+        async function collectDroppedUploadItems(dataTransfer) {
+            const result = {
+                files: [],
+                directories: []
+            };
+
+            if (!dataTransfer.items || dataTransfer.items.length === 0) {
+                result.files = Array.from(dataTransfer.files || []);
+                return result;
+            }
+
+            const tasks = [];
+            for (const item of dataTransfer.items) {
+                if (item.kind !== 'file') continue;
+
+                const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+                if (entry) {
+                    tasks.push(collectFileSystemEntry(entry, '', result));
+                } else {
+                    const file = item.getAsFile();
+                    if (file) {
+                        result.files.push(file);
+                    }
+                }
+            }
+
+            await Promise.all(tasks);
+            if (result.files.length === 0 && result.directories.length === 0) {
+                result.files = Array.from(dataTransfer.files || []);
+            }
+            return result;
+        }
+
+        async function collectFileSystemEntry(entry, parentPath, result) {
+            const entryPath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+
+            if (entry.isFile) {
+                const file = await readFileSystemEntryFile(entry);
+                result.files.push({
+                    file,
+                    fullPath: entryPath
+                });
+                return;
+            }
+
+            if (!entry.isDirectory) return;
+
+            result.directories.push(entryPath);
+            const children = await readAllDirectoryEntries(entry);
+            await Promise.all(children.map(child => collectFileSystemEntry(child, entryPath, result)));
+        }
+
+        function readFileSystemEntryFile(entry) {
+            return new Promise((resolve, reject) => {
+                entry.file(resolve, reject);
+            });
+        }
+
+        function readAllDirectoryEntries(directoryEntry) {
+            const reader = directoryEntry.createReader();
+            const entries = [];
+
+            return new Promise((resolve, reject) => {
+                function readBatch() {
+                    reader.readEntries(batch => {
+                        if (batch.length === 0) {
+                            resolve(entries);
+                            return;
+                        }
+                        entries.push(...batch);
+                        readBatch();
+                    }, reject);
+                }
+
+                readBatch();
+            });
+        }
+
+        // 处理待上传的文件（支持目录结构）
+        async function processFilesForUpload(files, directories = []) {
+            // 检查是否有正在进行的上传
+            const hasActiveUpload = uploadQueue.some(i => i.status === 'uploading' || i.status === 'pending');
+
+            if (hasActiveUpload) {
+                // 有活跃上传，追加到队列，不会冲突
+                appendToUploadQueue(files, directories);
+                return;
+            }
+
+            // 重置上传状态
+            resetUploadState();
+
+            // 构建文件条目列表
+            const fileEntries = buildFileEntries(files);
+
+            await createDroppedDirectories(directories);
+
+            if (fileEntries.length === 0) {
+                loadFiles();
+                return;
+            }
+
+            totalFiles = fileEntries.length;
+            uploadQueue = [...fileEntries];
+            totalSize = fileEntries.reduce((sum, item) => sum + item.size, 0);
+
+            // 渲染进度面板
+            renderUploadProgressPanel();
+
+            // 重置最小化状态，显示进度面板
+            isUploadMinimized = false;
+            miniProgressIndicator.hidden = true;
+            uploadProgress.hidden = false;
+
+            // 开始上传队列
+            startUploadQueue();
+
+            // 启动速度监控
+            startSpeedMonitor();
+        }
+
+        // 构建文件条目列表
+        function buildFileEntries(files) {
+            const entries = [];
+            for (const source of Array.from(files)) {
+                const file = source.file || source;
+                const fullPath = file.webkitRelativePath || file.mozRelativePath || file.name;
+                entries.push({
+                    file: file,
+                    fullPath: source.fullPath || fullPath,
+                    size: file.size,
+                    uploaded: 0,
+                    progress: 0,
+                    lastUploaded: 0,
+                    speed: 0,
+                    status: 'pending'
+                });
+            }
+            return entries;
+        }
+
+        async function createDroppedDirectories(directories) {
+            const uniqueDirectories = [...new Set(directories)].sort((a, b) => a.length - b.length);
+            for (const directory of uniqueDirectories) {
+                const fullPath = currentPath ? `${currentPath}/${directory}` : directory;
+                await createDirectoryRecursive(fullPath);
+            }
+        }
+
+        // 追加文件到现有上传队列（不重置已有进度）
+        async function appendToUploadQueue(files, directories = []) {
+            const newEntries = buildFileEntries(files);
+            const startIndex = uploadQueue.length;
+
+            await createDroppedDirectories(directories);
+
+            if (newEntries.length === 0) {
+                loadFiles();
+                return;
+            }
+
+            newEntries.forEach(item => {
+                totalSize += item.size;
+            });
+
+            totalFiles += newEntries.length;
+            uploadQueue.push(...newEntries);
+
+            // 追加渲染新的进度项
+            newEntries.forEach((item, idx) => {
+                const index = startIndex + idx;
+                const fileProgressItem = document.createElement('div');
+                fileProgressItem.className = 'file-progress-item';
+                fileProgressItem.id = `file-${index}`;
+                fileProgressItem.innerHTML = `
+                    <div class="file-progress-header">
+                        <div class="file-progress-name">${escapeHtml(item.fullPath)}</div>
+                        <div class="file-progress-size">${formatSize(item.size)}</div>
+                    </div>
+                    <div class="file-progress-bar">
+                        <div class="file-progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="file-progress-status">等待上传</div>
+                `;
+                filesProgressList.appendChild(fileProgressItem);
+            });
+
+            // 确保进度面板可见
+            isUploadMinimized = false;
+            miniProgressIndicator.hidden = true;
+            uploadProgress.hidden = false;
+
+            // 更新总体统计
+            updateOverallProgress();
+
+            // 继续处理队列中的新文件
+            processUploadQueue();
+        }
+
+        // 重置上传状态
+        function resetUploadState() {
+            uploadQueue = [];
+            totalFiles = 0;
+            completedFiles = 0;
+            totalSize = 0;
+            uploadedSize = 0;
+            uploadXhrs = {};
+            fileSpeeds = {};
+            
+            // 清除速度监控
+            if (speedMonitor) {
+                clearInterval(speedMonitor);
+                speedMonitor = null;
+            }
+            
+            lastUploadedSize = 0;
+            isUploadMinimized = false;
+            
+            // 隐藏上传进度UI
+            uploadProgress.hidden = true;
+            miniProgressIndicator.hidden = true;
+            
+            // 清空进度面板
+            filesProgressList.innerHTML = '';
+            overallProgressFill.style.width = '0%';
+            overallProgressText.textContent = '准备上传...';
+            uploadCount.textContent = '0/0 文件';
+            uploadSpeed.textContent = '0 KB/s';
+            
+            // 重置迷你进度指示器
+            miniProgressRing.style.strokeDashoffset = '150.8';
+            miniProgressText.textContent = '0%';
+            miniProgressSpeed.textContent = '0 KB/s';
+            lastSpeedSampleTime = 0;
+        }
+
+        // 渲染上传进度面板
+        function renderUploadProgressPanel() {
+            filesProgressList.innerHTML = '';
+            
+            uploadQueue.forEach((item, index) => {
+                const fileId = `file-${index}`;
+                const fileProgressItem = document.createElement('div');
+                fileProgressItem.className = 'file-progress-item';
+                fileProgressItem.id = fileId;
+                fileProgressItem.innerHTML = `
+                    <div class="file-progress-header">
+                        <div class="file-progress-name">${escapeHtml(item.fullPath)}</div>
+                        <div class="file-progress-size">${formatSize(item.size)}</div>
+                    </div>
+                    <div class="file-progress-bar">
+                        <div class="file-progress-fill" style="width: ${item.progress}%"></div>
+                    </div>
+                    <div class="file-progress-status">${getStatusText(item.status, item.progress)}</div>
+                `;
+                filesProgressList.appendChild(fileProgressItem);
+            });
+        }
+
+        // 开始上传队列
+        function startUploadQueue() {
+            activeUploads = 0;
+            updateOverallProgress();
+            processUploadQueue();
+        }
+
+        // 处理上传队列中的待上传文件（可被追加调用）
+        function processUploadQueue() {
+            while (activeUploads < UPLOAD_CONCURRENCY) {
+                const item = uploadQueue.find(i => i.status === 'pending');
+                if (!item) break;
+
+                activeUploads++;
+                item.status = 'uploading';
+                updateFileProgress(item);
+
+                uploadFileItem(item)
+                    .then(() => {
+                        item.status = 'completed';
+                        item.progress = 100;
+                        uploadedSize += item.size;
+                        completedFiles++;
+                        activeUploads--;
+                        updateFileProgress(item);
+                        updateOverallProgress();
+                        processUploadQueue();
+
+                        // 检查是否全部完成
+                        if (completedFiles === totalFiles) {
+                            completeAllUploads();
+                        }
+                    })
+                    .catch((err) => {
+                        item.status = 'failed';
+                        activeUploads--;
+                        updateFileProgress(item, err.message);
+                        updateOverallProgress();
+                        processUploadQueue();
+                    });
+            }
+        }
+
+        // 上传单个文件项
+        function uploadFileItem(item) {
+            return new Promise(async (resolve, reject) => {
+                const { file, fullPath } = item;
+                
+                // 获取文件的相对路径（用于创建目录结构）
+                const pathParts = fullPath.split('/');
+                const fileName = pathParts.pop();
+                const relativeDir = pathParts.join('/');
+                
+                // 构建完整的上传路径
+                let uploadDir = currentPath;
+                if (relativeDir) {
+                    uploadDir = uploadDir ? `${uploadDir}/${relativeDir}` : relativeDir;
+                    
+                    // 递归创建目录
+                    try {
+                        await createDirectoryRecursive(uploadDir);
+                    } catch (err) {
+                        reject(new Error(`创建目录失败: ${err.message}`));
+                        return;
+                    }
+                }
+                
+                // 创建XHR对象
+                const xhr = new XMLHttpRequest();
+                const uploadUrl = addKey(`/file_manager/api/upload?path=${encodeURIComponent(uploadDir)}&name=${encodeURIComponent(fileName)}`);
+                
+                xhr.open('PUT', uploadUrl, true);
+                
+                // 存储XHR对象以便取消
+                uploadXhrs[fullPath] = xhr;
+                
+                // 上传进度监听
+                xhr.upload.onprogress = function (e) {
+                    if (e.lengthComputable) {
+                        const progress = (e.loaded / e.total) * 100;
+                        item.progress = progress;
+                        item.uploaded = e.loaded;
+                        
+                        // 更新文件进度
+                        updateFileProgress(item);
+                        
+                        // 更新总体进度
+                        updateOverallProgress();
+                    }
+                };
+                
+                // 上传完成
+                xhr.onload = function() {
+                    delete uploadXhrs[fullPath];
+                    
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(xhr.response);
+                    } else {
+                        reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+                    }
+                };
+                
+                // 上传错误
+                xhr.onerror = function() {
+                    delete uploadXhrs[fullPath];
+                    reject(new Error('网络错误'));
+                };
+                
+                // 上传中止
+                xhr.onabort = function() {
+                    delete uploadXhrs[fullPath];
+                    reject(new Error('上传已取消'));
+                };
+                
+                // 发送文件
+                xhr.send(file);
+            });
+        }
+
+        // 递归创建目录
+        async function createDirectoryRecursive(fullDirPath) {
+            if (!fullDirPath) return true;
+            
+            // 分割路径为层级
+            const pathParts = fullDirPath.split('/').filter(p => p);
+            let currentPath = '';
+            
+            // 逐级创建目录
+            for (const part of pathParts) {
+                const parentPath = currentPath;
+                currentPath = currentPath ? `${currentPath}/${part}` : part;
+                
+                try {
+                    // 使用指定格式
+                    const response = await fetch(addKey(`/file_manager/api/mkdir?path=${encodeURIComponent(parentPath)}&name=${encodeURIComponent(part)}`), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                    
+                    // 忽略已存在的错误（409）
+                    if (!response.ok && response.status !== 409) {
+                        throw new Error(`创建目录 "${part}" 失败: ${response.statusText}`);
+                    }
+                } catch (err) {
+                    throw err;
+                }
+            }
+            
+            return true;
+        }
+
+        // 更新文件进度
+        function updateFileProgress(item, errorMsg = '') {
+            const index = uploadQueue.indexOf(item);
+            if (index === -1) return;
+            
+            const fileId = `file-${index}`;
+            const fileElement = document.getElementById(fileId);
+            if (!fileElement) return;
+            
+            // 更新进度条
+            const progressFill = fileElement.querySelector('.file-progress-fill');
+            const statusText = fileElement.querySelector('.file-progress-status');
+            
+            progressFill.style.width = `${item.progress}%`;
+            
+            if (item.status === 'failed') {
+                progressFill.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+                statusText.textContent = errorMsg || '上传失败';
+                statusText.style.color = '#ef4444';
+            } else {
+                statusText.textContent = getStatusText(item.status, item.progress, item.speed);
+                if (item.status === 'completed') {
+                    statusText.style.color = '#10b981';
+                }
+            }
+        }
+
+        // 获取状态文本（增强版，包含速度）
+        function getStatusText(status, progress, speed = 0) {
+            switch (status) {
+                case 'pending':
+                    return '等待上传';
+                case 'uploading':
+                    const speedStr = formatSpeed(speed);
+                    return `上传中 ${progress.toFixed(0)}% · ${speedStr}`;
+                case 'completed':
+                    return '上传完成';
+                case 'failed':
+                    return '上传失败';
+                default:
+                    return '等待上传';
+            }
+        }
+
+        // 更新总体进度
+        function updateOverallProgress() {
+            // 计算已上传的总大小
+            let currentUploadedSize = uploadedSize;
+            uploadQueue.forEach(item => {
+                if (item.status === 'uploading') {
+                    currentUploadedSize += item.uploaded;
+                }
+            });
+            
+            // 计算总体进度
+            const overallProgress = totalSize > 0 ? (currentUploadedSize / totalSize) * 100 : 0;
+            
+            // 更新主面板UI
+            overallProgressFill.style.width = `${overallProgress}%`;
+            uploadCount.textContent = `${completedFiles}/${totalFiles} 文件`;
+            
+            // 更新迷你进度指示器（即使面板显示时也更新，以便最小化后立即显示正确进度）
+            miniProgressText.textContent = `${overallProgress.toFixed(0)}%`;
+            const circumference = 150.8; // 2 * PI * 24
+            const offset = circumference - (overallProgress / 100) * circumference;
+            miniProgressRing.style.strokeDashoffset = offset;
+            
+            // 更新总体状态文本
+            if (completedFiles === totalFiles && totalFiles > 0) {
+                const failedCount = uploadQueue.filter(i => i.status === 'failed').length;
+                if (failedCount > 0) {
+                    overallProgressText.textContent = `完成 ${completedFiles - failedCount}/${totalFiles} 文件，${failedCount} 个失败`;
+                } else {
+                    overallProgressText.textContent = `全部完成 (${formatSize(totalSize)})`;
+                }
+            } else {
+                overallProgressText.textContent = `总计: ${formatSize(currentUploadedSize)} / ${formatSize(totalSize)} (${overallProgress.toFixed(0)}%)`;
+            }
+        }
+
+        // 启动上传速度监控
+        function startSpeedMonitor() {
+            lastSpeedSampleTime = performance.now();
+            speedMonitor = setInterval(() => {
+                let currentUploaded = uploadedSize;
+                const now = performance.now();
+                const elapsedSeconds = Math.max((now - lastSpeedSampleTime) / 1000, 0.001);
+
+                uploadQueue.forEach(item => {
+                    if (item.status === 'uploading') {
+                        currentUploaded += item.uploaded;
+                        
+                        // 计算单个文件的上传速度
+                        const fileBytesPerSecond = (item.uploaded - item.lastUploaded) / elapsedSeconds;
+                        item.speed = fileBytesPerSecond;
+                        item.lastUploaded = item.uploaded;
+                    }
+                });
+                
+                // 计算总速度 (字节/秒)
+                const bytesPerSecond = (currentUploaded - lastUploadedSize) / elapsedSeconds;
+                const speedText = formatSpeed(bytesPerSecond);
+                
+                // 更新主面板UI
+                uploadSpeed.textContent = speedText;
+                
+                // 更新迷你进度指示器
+                if (isUploadMinimized) {
+                    miniProgressSpeed.textContent = speedText;
+                    
+                    // 计算总体进度
+                    const overallProgress = totalSize > 0 ? (currentUploaded / totalSize) * 100 : 0;
+                    miniProgressText.textContent = `${overallProgress.toFixed(0)}%`;
+                    
+                    // 更新圆形进度条
+                    const circumference = 150.8; // 2 * PI * 24
+                    const offset = circumference - (overallProgress / 100) * circumference;
+                    miniProgressRing.style.strokeDashoffset = offset;
+                }
+                
+                // 更新每个文件的进度显示（包括速度）
+                uploadQueue.forEach(item => {
+                    if (item.status === 'uploading') {
+                        updateFileProgress(item);
+                    }
+                });
+                
+                lastUploadedSize = currentUploaded;
+                lastSpeedSampleTime = now;
+            }, 1000);
+        }
+
+        // 完成所有上传
+        function completeAllUploads() {
+            // 停止速度监控
+            if (speedMonitor) {
+                clearInterval(speedMonitor);
+                speedMonitor = null;
+            }
+            
+            // 刷新文件列表
+            loadFiles();
+            
+            // 隐藏所有上传相关的UI
+            uploadProgress.hidden = true;
+            miniProgressIndicator.hidden = true;
+            isUploadMinimized = false;
+        }
+
+        // 加载文件列表
+        async function loadFiles() {
+            fileList.innerHTML = '<div class="loading">加载中...</div>';
+
+            try {
+                const response = await fetch(addKey(`/file_manager/api/list_dir?path=${encodeURIComponent(currentPath)}`), {
+                    method: 'GET'
+                });
+                const data = await response.json();
+
+                renderBreadcrumb();
+                renderFileList(data.files);
+            } catch (err) {
+                fileList.innerHTML = `<div class="empty-state"><p>加载失败: ${err.message}</p></div>`;
+            }
+        }
+
+        // 渲染面包屑导航
+        function renderBreadcrumb() {
+            const parts = currentPath.split('/').filter(p => p);
+
+            let html = '<a href="#" data-path="" class="breadcrumb-item">根目录</a>';
+            let path = '';
+
+            parts.forEach((part, index) => {
+                path += (path ? '/' : '') + encodeURIComponent(part);
+                html += `<span class="breadcrumb-separator">›</span>`;
+                html += `<a href="#" data-path="${path}" class="breadcrumb-item">${part}</a>`;
+            });
+
+            breadcrumb.innerHTML = html;
+
+            // 绑定点击事件
+            breadcrumb.querySelectorAll('.breadcrumb-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    window.location.href = addKey(`/file_manager/files/${item.dataset.path}`);
+                });
+            });
+        }
+
+        // 渲染文件列表
+        function renderFileList(files) {
+            if (!files || files.length === 0) {
+                fileList.innerHTML = `
+                    <div class="empty-state">
+                        <span class="empty-icon">📭</span>
+                        <p>文件夹为空</p>
+                    </div>
+                `;
+                return;
+            }
+
+            fileList.innerHTML = files.map(file => `
+                <div class="file-item" data-name="${escapeHtml(file.name)}" data-is_dir="${file.is_dir}">
+                    <span class="file-icon">${getFileIcon(file)}</span>
+                    <div class="file-info">
+                        <div class="file-name">${escapeHtml(file.name)}</div>
+                        <div class="file-meta">
+                            ${file.is_dir ? '文件夹' : formatSize(file.size)} ${formatDate(file.modified)}
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        <button class="btn btn-secondary download-btn" title="下载">
+                            <span class="icon">⬇️</span>
+                        </button>
+                        <button class="btn btn-secondary file-menu-btn" title="更多操作" aria-label="更多操作" aria-expanded="false">
+                            ⋯
+                        </button>
+                        <div class="file-menu" hidden>
+                            <button class="file-menu-item rename-btn">✏️ 重命名</button>
+                            <button class="file-menu-item move-btn">📂 移动</button>
+                            <button class="file-menu-item copy-download-link-btn">🔗 复制下载直链</button>
+                            ${file.is_dir ? '' : '<button class="file-menu-item copy-preview-link-btn">👁️ 复制预览链接</button>'}
+                            <button class="file-menu-item danger delete-btn">🗑️ 删除</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // 绑定事件
+            fileList.querySelectorAll('.file-item').forEach(item => {
+                const name = item.dataset.name;
+                const isDir = item.dataset.is_dir === 'true';
+                const itemPath = currentPath ? `${currentPath}/${name}` : name;
+                const previewUrl = addKey(`/file_manager/files/${itemPath}`);
+                const downloadUrl = addKey(`/file_manager/api/download?path=${encodeURIComponent(itemPath)}`);
+                const menuBtn = item.querySelector('.file-menu-btn');
+                const menu = item.querySelector('.file-menu');
+
+                // 点击进入目录
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.file-actions')) return;
+                    window.location.href = previewUrl;
+                });
+
+                menuBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const willOpen = menu.hidden;
+                    closeAllFileMenus();
+                    item.classList.toggle('menu-open', willOpen);
+                    item.querySelector('.file-actions').classList.toggle('menu-open', willOpen);
+                    menu.hidden = !willOpen;
+                    menuBtn.setAttribute('aria-expanded', String(willOpen));
+                });
+
+                menu.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+
+                // 重命名
+                item.querySelector('.rename-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeAllFileMenus();
+                    currentFileForRename = name;
+                    renameNameInput.value = name;
+                    renameModal.hidden = false;
+                    renameNameInput.focus();
+                    renameNameInput.select();
+                });
+
+                // 移动
+                item.querySelector('.move-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeAllFileMenus();
+                    currentFileForMove = name;
+                    showDirectorySelector();
+                });
+
+                // 复制下载直链
+                item.querySelector('.copy-download-link-btn').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await copyLinkToClipboard(downloadUrl);
+                    closeAllFileMenus();
+                });
+
+                // 复制预览链接（仅文件）
+                const copyPreviewLinkBtn = item.querySelector('.copy-preview-link-btn');
+                if (copyPreviewLinkBtn) {
+                    copyPreviewLinkBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        await copyLinkToClipboard(previewUrl);
+                        closeAllFileMenus();
+                    });
+                }
+
+                // 下载
+                item.querySelector('.download-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    window.location.href = downloadUrl;
+                });
+
+                // 删除
+                item.querySelector('.delete-btn').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    closeAllFileMenus();
+                    if (confirm(`确定要删除 "${name}" 吗？`)) {
+                        await deleteFile(name);
+                    }
+                });
+            });
+        }
+
+        // 获取文件图标
+        function getFileIcon(file) {
+            if (file.is_dir) {
+                return '📁';
+            }
+
+            const dot_split = file.name.split('.');
+            if (dot_split.length < 2) {
+                return defaultIcon; // 无后缀的情况
+            }
+            const ext = dot_split[dot_split.length - 1].toLowerCase();
+            for (const map_item of iconMap) {
+                if (map_item.ext.includes(ext)) {
+                    return map_item.icon;
+                }
+            }
+            return defaultIcon;
+        }
+
+        // 格式化文件大小
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatSpeed(bytesPerSecond) {
+            const speed = Math.max(0, bytesPerSecond || 0);
+            if (speed < 1024) return `${speed.toFixed(0)} B/s`;
+            return `${formatSize(speed)}/s`;
+        }
+
+        // 格式化日期
+        function formatDate(date) {
+            return new Date(date * 1000).toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // 重命名和移动相关变量
+        let renameModal = null;
+        let moveModal = null;
+        let renameNameInput = null;
+        let moveTargetInput = null;
+        let currentFileForRename = null;
+        let currentFileForMove = null;
+
+        // 初始化重命名和移动模态框
+        function initRenameMoveModals() {
+            // 创建重命名模态框
+            renameModal = document.createElement('div');
+            renameModal.className = 'modal';
+            renameModal.hidden = true;
+            renameModal.innerHTML = `
+                <div class="modal-content">
+                    <h3>重命名</h3>
+                    <input type="text" id="renameNameInput" placeholder="新名称" class="input">
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" id="cancelRenameBtn">取消</button>
+                        <button class="btn btn-primary" id="confirmRenameBtn">确定</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(renameModal);
+
+            // 创建移动模态框
+            moveModal = document.createElement('div');
+            moveModal.className = 'modal';
+            moveModal.hidden = true;
+            moveModal.innerHTML = `
+                <div class="modal-content">
+                    <h3>移动到</h3>
+                    <input type="text" id="moveTargetInput" placeholder="目标路径（相对于根目录）" class="input">
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" id="cancelMoveBtn">取消</button>
+                        <button class="btn btn-primary" id="confirmMoveBtn">确定</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(moveModal);
+
+            // 获取输入元素
+            renameNameInput = document.getElementById('renameNameInput');
+            moveTargetInput = document.getElementById('moveTargetInput');
+
+            // 绑定重命名事件
+            document.getElementById('cancelRenameBtn').addEventListener('click', () => {
+                renameModal.hidden = true;
+                renameNameInput.value = '';
+                currentFileForRename = null;
+            });
+
+            document.getElementById('confirmRenameBtn').addEventListener('click', async () => {
+                const newName = renameNameInput.value.trim();
+                if (!newName) {
+                    alert('请输入新名称');
+                    return;
+                }
+
+                try {
+                    await renameFile(currentFileForRename, newName);
+                    renameModal.hidden = true;
+                    renameNameInput.value = '';
+                    currentFileForRename = null;
+                    loadFiles();
+                } catch (err) {
+                    alert('重命名失败: ' + err.message);
+                }
+            });
+
+            renameNameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') document.getElementById('confirmRenameBtn').click();
+                if (e.key === 'Escape') document.getElementById('cancelRenameBtn').click();
+            });
+
+            // 绑定移动事件
+            document.getElementById('cancelMoveBtn').addEventListener('click', () => {
+                moveModal.hidden = true;
+                moveTargetInput.value = '';
+                currentFileForMove = null;
+            });
+
+            document.getElementById('confirmMoveBtn').addEventListener('click', async () => {
+                const targetPath = moveTargetInput.value.trim();
+                if (!targetPath) {
+                    alert('请输入目标路径');
+                    return;
+                }
+
+                try {
+                    await moveFile(currentFileForMove, targetPath);
+                    moveModal.hidden = true;
+                    moveTargetInput.value = '';
+                    currentFileForMove = null;
+                    loadFiles();
+                } catch (err) {
+                    alert('移动失败: ' + err.message);
+                }
+            });
+
+            moveTargetInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') document.getElementById('confirmMoveBtn').click();
+                if (e.key === 'Escape') document.getElementById('cancelMoveBtn').click();
+            });
+
+            // 点击模态框背景关闭
+            renameModal.addEventListener('click', (e) => {
+                if (e.target === renameModal) {
+                    renameModal.hidden = true;
+                    renameNameInput.value = '';
+                    currentFileForRename = null;
+                }
+            });
+
+            moveModal.addEventListener('click', (e) => {
+                if (e.target === moveModal) {
+                    moveModal.hidden = true;
+                    moveTargetInput.value = '';
+                    currentFileForMove = null;
+                }
+            });
+        }
+
+        // 简单的HTML转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function closeAllFileMenus() {
+            fileList.querySelectorAll('.file-menu').forEach(menu => {
+                menu.hidden = true;
+            });
+            fileList.querySelectorAll('.file-actions').forEach(actions => {
+                actions.classList.remove('menu-open');
+            });
+            fileList.querySelectorAll('.file-item').forEach(item => {
+                item.classList.remove('menu-open');
+            });
+            fileList.querySelectorAll('.file-menu-btn').forEach(button => {
+                button.setAttribute('aria-expanded', 'false');
+            });
+        }
+
+        async function copyLinkToClipboard(relativeUrl) {
+            const url = new URL(relativeUrl, window.location.origin).href;
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(url);
+                } else {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = url;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    document.execCommand('copy');
+                    textarea.remove();
+                }
+            } catch (err) {
+                alert('复制失败: ' + err.message);
+            }
+        }
+
+        // 创建文件夹
+        async function createFolder() {
+            const name = folderNameInput.value.trim();
+            if (!name) {
+                alert('请输入文件夹名称');
+                return;
+            }
+
+            try {
+                // 使用指定格式: /file_manager/api/mkdir?path=&name=文件名
+                const response = await fetch(addKey(`/file_manager/api/mkdir?path=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(name)}`), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                if (!response.ok) throw new Error('创建失败');
+
+                newFolderModal.hidden = true;
+                folderNameInput.value = '';
+                loadFiles();
+            } catch (err) {
+                alert('创建文件夹失败: ' + err.message);
+            }
+        }
+
+        // 删除文件
+        async function deleteFile(name) {
+            const filePath = currentPath ? `${currentPath}/${name}` : name;
+
+            try {
+                const response = await fetch(addKey(`/file_manager/api/delete?path=${encodeURIComponent(filePath)}`), {
+                    method: 'DELETE',
+                });
+
+                if (!response.ok) throw new Error('删除失败');
+
+                loadFiles();
+            } catch (err) {
+                alert('删除失败: ' + err.message);
+            }
+        }
+
+        // 重命名文件
+        async function renameFile(oldName, newName) {
+            const filePath = currentPath ? `${currentPath}/${oldName}` : oldName;
+
+            try {
+                const response = await fetch(addKey(`/file_manager/api/rename?path=${encodeURIComponent(filePath)}&newName=${encodeURIComponent(newName)}`), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                if (!response.ok) throw new Error('重命名失败');
+
+                return true;
+            } catch (err) {
+                alert('重命名失败: ' + err.message);
+            }
+        }
+
+        // 移动文件
+        async function moveFile(name, targetPath) {
+            const filePath = currentPath ? `${currentPath}/${name}` : name;
+
+            try {
+                const response = await fetch(addKey(`/file_manager/api/move?path=${encodeURIComponent(filePath)}&targetPath=${encodeURIComponent(targetPath)}`), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                if (!response.ok) throw new Error('移动失败');
+
+                return true;
+            } catch (err) {
+                alert('移动失败: ' + err.message);
+            }
+        }
+
+        // 目录选择弹窗相关变量
+        let directoryModal = null;
+        let pathInput = null;
+        let directoryTree = null;
+        let newFolderNameInput = null;
+        let currentSelection = null;
+        let selectedPath = '';
+
+        // 初始化目录选择弹窗
+        function initDirectorySelector() {
+            // 创建目录选择弹窗
+            directoryModal = document.createElement('div');
+            directoryModal.className = 'modal';
+            directoryModal.hidden = true;
+            directoryModal.innerHTML = `
+                <div class="modal-content directory-selector">
+                    <h3>选择目标目录</h3>
+                    
+                    <div id="directoryBreadcrumb" class="directory-breadcrumb">
+                        <!-- 面包屑动态生成 -->
+                    </div>
+                    
+                    <div class="directory-tree" id="directoryTree">
+                        <div class="loading-tree">加载中...</div>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <div class="new-folder-group">
+                            <input type="text" id="newFolderName" class="input" placeholder="新建文件夹...">
+                            <button id="createFolderBtn" class="btn btn-secondary" title="创建文件夹">
+                                <span class="icon">➕</span>
+                            </button>
+                        </div>
+                        
+                        <div class="modal-actions">
+                            <button class="btn btn-secondary" id="cancelSelectBtn">取消</button>
+                            <button class="btn btn-primary" id="confirmSelectBtn">移动到此处</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(directoryModal);
+
+            // 获取DOM元素
+            directoryTree = document.getElementById('directoryTree');
+            newFolderNameInput = document.getElementById('newFolderName');
+
+            // 绑定事件
+            document.getElementById('createFolderBtn').addEventListener('click', createNewFolderInSelector);
+
+            document.getElementById('cancelSelectBtn').addEventListener('click', () => {
+                closeDirectorySelector();
+            });
+
+            document.getElementById('confirmSelectBtn').addEventListener('click', async () => {
+                // 目标路径就是当前浏览的路径 (selectedPath)
+                try {
+                    await moveFile(currentFileForMove, selectedPath);
+                    closeDirectorySelector();
+                    loadFiles();
+                } catch (err) {
+                    alert('移动失败: ' + err.message);
+                }
+            });
+
+            newFolderNameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') createNewFolderInSelector();
+                if (e.key === 'Escape') closeDirectorySelector();
+            });
+
+            // 点击模态框背景关闭
+            directoryModal.addEventListener('click', (e) => {
+                if (e.target === directoryModal) {
+                    closeDirectorySelector();
+                }
+            });
+        }
+
+        function closeDirectorySelector() {
+            directoryModal.hidden = true;
+            selectedPath = '';
+            newFolderNameInput.value = '';
+        }
+
+        // 显示目录选择弹窗
+        function showDirectorySelector() {
+            if (!directoryModal) initDirectorySelector();
+
+            selectedPath = ''; // 默认为根目录
+            newFolderNameInput.value = '';
+
+            directoryModal.hidden = false;
+            loadDirectoryTree(selectedPath);
+        }
+
+        // 加载目录树 (实际上是加载当前目录下的子文件夹列表)
+        async function loadDirectoryTree(path = '') {
+            directoryTree.innerHTML = '<div class="loading-tree">加载中...</div>';
+            selectedPath = path;
+
+            renderDirectoryBreadcrumb(path);
+
+            try {
+                const response = await fetch(addKey(`/file_manager/api/list_dir?path=${encodeURIComponent(path)}`));
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                }
+
+                const text = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.error('Failed to parse JSON:', text.substring(0, 100));
+                    throw new Error('Invalid server response (not JSON)');
+                }
+
+                renderDirectoryList(data.files);
+            } catch (err) {
+                directoryTree.innerHTML = `
+                    <div class="empty-tree">
+                        <span class="icon">❌</span>
+                        <p>加载失败: ${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 渲染目录面包屑
+        function renderDirectoryBreadcrumb(path) {
+            const breadcrumbContainer = document.getElementById('directoryBreadcrumb');
+            let html = `<span class="dir-crumb-item" data-path="">根目录</span>`;
+
+            if (path) {
+                const parts = path.split('/').filter(p => p);
+                let currentBuildPath = '';
+
+                parts.forEach(part => {
+                    currentBuildPath += (currentBuildPath ? '/' : '') + part;
+                    html += `<span class="dir-crumb-separator">></span>`;
+                    html += `<span class="dir-crumb-item" data-path="${currentBuildPath}">${part}</span>`;
+                });
+            }
+
+            breadcrumbContainer.innerHTML = html;
+
+            // 绑定点击事件
+            breadcrumbContainer.querySelectorAll('.dir-crumb-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    loadDirectoryTree(item.dataset.path);
+                });
+            });
+        }
+
+        // 渲染目录列表
+        function renderDirectoryList(directories) {
+            const itemList = directories || [];
+
+            if (itemList.length === 0) {
+                directoryTree.innerHTML = `
+                    <div class="empty-tree">
+                        <span class="icon">📂</span>
+                        <p>此文件夹为空</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            itemList.forEach(item => {
+                const fullPath = selectedPath ? `${selectedPath}/${item.name}` : item.name;
+                const disabledClass = item.is_dir ? '' : ' disabled';
+                const icon = item.is_dir ? '📁' : getFileIcon(item);
+                html += `<div class="directory-item${disabledClass}" data-path="${escapeHtml(fullPath)}" data-is_dir="${item.is_dir}">`;
+                html += `<span class="directory-icon">${icon}</span>`;
+                html += `<span class="directory-name">${escapeHtml(item.name)}</span>`;
+                html += '</div>';
+            });
+
+            directoryTree.innerHTML = html;
+
+            // 绑定点击事件 - 只有目录可以进入，文件仅作为浅色禁用项展示
+            directoryTree.querySelectorAll('.directory-item:not(.disabled)').forEach(item => {
+                item.addEventListener('click', () => {
+                    loadDirectoryTree(item.dataset.path);
+                });
+            });
+        }
+
+        // 在目录选择器中创建新文件夹
+        async function createNewFolderInSelector() {
+            const name = newFolderNameInput.value.trim();
+            if (!name) {
+                alert('请输入文件夹名称');
+                return;
+            }
+
+            try {
+                // 使用指定格式: /file_manager/api/mkdir?path=&name=文件名
+                const response = await fetch(addKey(`/file_manager/api/mkdir?path=${encodeURIComponent(selectedPath)}&name=${encodeURIComponent(name)}`), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                if (!response.ok) throw new Error('创建文件夹失败');
+
+                newFolderNameInput.value = '';
+                loadDirectoryTree(selectedPath);
+            } catch (err) {
+                alert('创建文件夹失败: ' + err.message);
+            }
+        }
+
+    </script>
+</body>
+</html>
