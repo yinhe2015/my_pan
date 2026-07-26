@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.join(os.path.expanduser('~'), 'disk-d', 'pylib'))
+
 from 自定义http服务器 import *
 from 常量与配置 import *
 from 处理管理请求 import 处理管理请求
