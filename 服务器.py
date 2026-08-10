@@ -1,5 +1,6 @@
 import sys
 import os
+sys.path.append(os.path.join(os.path.expanduser('~'), 'pylib'))
 sys.path.append(os.path.join(os.path.expanduser('~'), 'disk-d', 'pylib'))
 
 from 自定义http服务器 import *
