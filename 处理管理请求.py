@@ -31,7 +31,13 @@ def 处理管理请求(
             else:
                 操作器.发送JSON({'success': True, 'message': '服务器未设置密码, 默认成功'})
         else:
-            操作器.发送文件(管理登录_html_路径, MIME类型=MIME类型映射['html'], 显示进度条=显示进度条)
+            with open(管理登录_html_路径, 'r', encoding=默认编码) as 文件:
+                文本 = 文件.read()
+            操作器.发送响应(200)
+            操作器.发送头('Content-type', 'text/html')
+            操作器.结束头()
+            操作器.写入(文本.replace(':::名称:::', 名称))
+            日志.记录(f'发送 管理登录.html')
         return
 
     if 管理密码:
@@ -51,7 +57,14 @@ def 处理管理请求(
         case 'GET':
             match 相对URL:
                 case '/':
-                    操作器.发送文件(管理_html_路径, MIME类型=MIME类型映射['html'], 显示进度条=显示进度条)
+                    with open(管理_html_路径, 'r', encoding=默认编码) as 文件:
+                        文本 = 文件.read()
+                    操作器.发送响应(200)
+                    操作器.发送响应(200)
+                    操作器.发送头('Content-type', 'text/html')
+                    操作器.结束头()
+                    操作器.写入(文本.replace(':::名称:::', 名称))
+                    日志.记录(f'发送 管理.html')
                 case _:
                     操作器.发送响应(404)
                     操作器.结束头()

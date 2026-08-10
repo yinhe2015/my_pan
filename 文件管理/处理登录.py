@@ -11,7 +11,13 @@ def 处理登录请求(
     print
     if 请求.类型 == 'GET':
         if 相对URL == '/login' or 相对URL == '/login/':
-            操作器.发送文件(登录_html_路径, MIME类型=MIME类型映射['html'], 显示进度条=显示进度条)
+            with open(登录_html_路径, 'r', encoding=默认编码) as 文件:
+                文本 = 文件.read()
+            操作器.发送响应(200)
+            操作器.发送头('Content-type', 'text/html')
+            操作器.结束头()
+            操作器.写入(文本.replace(':::名称:::', 名称))
+            日志.记录(f'发送 登录.html')
             return
         else:
             操作器.发送响应(404)

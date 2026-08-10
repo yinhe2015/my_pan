@@ -35,7 +35,13 @@ def 处理函数(
 
     if 请求.类型 == 'GET':
         if 相对URL == '/' or 相对URL == '/index.html':
-            操作器.发送文件(index_html_路径, MIME类型=MIME类型映射['html'], 显示进度条=显示进度条)
+            with open(index_html_路径, 'r', encoding=默认编码) as 文件:
+                文本 = 文件.read()
+            操作器.发送响应(200)
+            操作器.发送头('Content-type', 'text/html')
+            操作器.结束头()
+            操作器.写入(文本.replace(':::名称:::', 名称))
+            日志.记录(f'发送 index.html')
         elif 相对URL.startswith('/static/'):
             原始路径 = 相对URL[8:].replace('/', os.path.sep)
             路径 = os.path.join(静态目录, 原始路径)
@@ -58,6 +64,16 @@ def 处理函数(
                 操作器.结束头()
                 操作器.写入(页面_404.format('favicon.ico'))
                 日志.记录(f'由于 favicon.ico 不存在, 发送 404 错误响应')
+        else:
+            操作器.发送响应(404)
+            操作器.结束头()
+            操作器.写入(页面_404.format(相对URL))
+            日志.记录(f'由于路径 {相对URL} 不存在, 发送 404 错误响应')
+    else:
+        操作器.发送响应(405)
+        操作器.结束头()
+        操作器.写入(页面_405.format(请求.类型))
+        日志.记录(f'由于请求类型 {请求.类型} 不支持, 发送 405 错误响应')
 
 if __name__ == '__main__':
     服务器 = 自定义HTTP服务器(处理函数, 端口=8080, 日志=日志)
