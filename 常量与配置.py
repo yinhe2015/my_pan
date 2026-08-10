@@ -22,6 +22,9 @@ os.chdir(基础目录)
 静态目录 = os.path.join(基础目录, '静态')
 os.makedirs(静态目录, exist_ok=True)
 
+存储路径 = os.path.join(基础目录, '文件')
+os.makedirs(存储路径, exist_ok=True)
+
 块大小 = 1024 * 1024
 显示进度条 = False
 

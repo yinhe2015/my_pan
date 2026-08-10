@@ -8,9 +8,6 @@ from 处理管理请求 import 处理管理请求
 from 文件管理 import 处理文件管理请求
 import os
 
-存储路径 = os.path.join(基础目录, '文件')
-os.makedirs(存储路径, exist_ok=True)
-
 index_html_路径 = os.path.join(静态目录, 'index.html')
 
 def 处理函数(
