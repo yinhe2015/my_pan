@@ -1,0 +1,36 @@
+# System files
+.DS_Store
+desktop.ini
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment, logs, temporary files, and caches
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# 项目
+文件/
