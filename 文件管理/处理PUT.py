@@ -33,7 +33,8 @@ def 处理PUT请求(
             日志.记录(f'由于 PUT 请求 name 参数为空, 发送 400 错误响应')
             return
         路径 = os.path.join(路径, 名称)
-        if os.path.exists(路径):
+        允许覆盖 = 请求.参数.get('overwrite') == '1'
+        if os.path.exists(路径) and (not 允许覆盖 or not os.path.isfile(路径)):
             操作器.发送响应(409)
             操作器.结束头()
             操作器.写入(页面_409.format(路径))
@@ -84,9 +85,15 @@ def 处理PUT请求(
             if 显示进度条:
                 print('') # 换行, 避免之前的内容残留
 
+            if 已接收 != 大小字节:
+                raise IOError(f'文件传输不完整: 应接收 {大小字节} 字节, 实际接收 {已接收} 字节')
+
             # 接收完成后重命名临时文件
             日志.记录(f'接收 {路径} 成功')
-            os.rename(临时路径, 路径)
+            if 允许覆盖:
+                os.replace(临时路径, 路径)
+            else:
+                os.rename(临时路径, 路径)
 
             # 发送成功响应
             操作器.发送响应(200)
