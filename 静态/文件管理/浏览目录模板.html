@@ -637,10 +637,33 @@
                         return;
                     }
                 }
+
+                // 在发送文件内容前确认同名文件，避免服务器提前返回 409 时被浏览器误报为网络错误。
+                let overwrite = false;
+                try {
+                    const response = await fetch(addKey(`/file_manager/api/list_dir?path=${encodeURIComponent(uploadDir)}`));
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const { files } = await response.json();
+                    const existing = files.find(entry => entry.name === fileName);
+                    if (existing) {
+                        if (existing.is_dir) {
+                            reject(new Error('同名文件夹已存在'));
+                            return;
+                        }
+                        if (!confirm(`文件 "${fileName}" 已存在，确定要覆盖吗？`)) {
+                            reject(new Error('同名文件已存在，已取消覆盖'));
+                            return;
+                        }
+                        overwrite = true;
+                    }
+                } catch (err) {
+                    reject(new Error(`检查同名文件失败: ${err.message}`));
+                    return;
+                }
                 
                 // 创建XHR对象
                 const xhr = new XMLHttpRequest();
-                const uploadUrl = addKey(`/file_manager/api/upload?path=${encodeURIComponent(uploadDir)}&name=${encodeURIComponent(fileName)}`);
+                const uploadUrl = addKey(`/file_manager/api/upload?path=${encodeURIComponent(uploadDir)}&name=${encodeURIComponent(fileName)}${overwrite ? '&overwrite=1' : ''}`);
                 
                 xhr.open('PUT', uploadUrl, true);
                 
@@ -668,6 +691,8 @@
                     
                     if (xhr.status >= 200 && xhr.status < 300) {
                         resolve(xhr.response);
+                    } else if (xhr.status === 409) {
+                        reject(new Error('同名文件已存在，请刷新后重试'));
                     } else {
                         reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
                     }
