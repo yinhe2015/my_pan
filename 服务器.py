@@ -1,7 +1,9 @@
 import sys
 import os
-sys.path.append(os.path.join(os.path.expanduser('~'), 'pylib'))
-sys.path.append(os.path.join(os.path.expanduser('~'), 'disk-d', 'pylib'))
+if os.name == 'posix':
+    sys.path.append(os.path.join(os.path.expanduser('~'), 'pylib'))
+else:
+    sys.path.append('D:\\pylib')
 
 from 自定义http服务器 import *
 from 常量与配置 import *
